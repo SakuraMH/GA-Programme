@@ -180,4 +180,411 @@ public class AGApp {
 ### Execution
 <img src="Images/exec.png" width="70%">
 
+## SMA method
+### AgentFitness Class
+The AgentFitness class represents an agent with its associated fitness value. This class is designed to store information about an agent's identity (aid) and its fitness level (fitness), allowing for easy retrieval and modification of these properties through getter and setter methods.
+
+Additionally, the class implements the Comparable interface, indicating that instances of AgentFitness can be compared to each other. The compareTo method is overridden to define the comparison logic based on the fitness values of two AgentFitness objects.
+
+By implementing Comparable, you can compare agents based on their fitness values, enabling sorting and ordering operations. When comparing two instances, the compareTo method determines whether one agent's fitness is greater, lesser, or equal to another's, returning a positive integer, negative integer, or zero, respectively.
+
+This class can be useful in scenarios where you need to rank or sort agents based on their fitness levels, such as in evolutionary algorithms, genetic programming, or other optimization techniques.
+```
+import jade.core.AID;
+
+public class AgentFitness implements Comparable{
+    private AID aid;
+    private int fitness;
+
+    public AgentFitness(AID aid, int fitness) {
+        this.aid = aid;
+        this.fitness = fitness;
+    }
+
+    public AID getAid() {
+        return aid;
+    }
+
+    public void setAid(AID aid) {
+        this.aid = aid;
+    }
+
+    public int getFitness() {
+        return fitness;
+    }
+
+    public void setFitness(int fitness) {
+        this.fitness = fitness;
+    }
+    @Override
+    public int compareTo(Object o) {
+        AgentFitness agentFitness=(AgentFitness) o;
+        if (this.fitness>agentFitness.fitness)
+            return 1;
+        else if(this.fitness<agentFitness.fitness){
+            return -1;
+        }else
+            return 0;
+    }
+}
+```
+### IndividualAgent class 
+the IndividualAgent class extends the Agent class. It is designed to simulate an individual agent in a Genetic Algorithm (GA) system. The agent's genetic makeup is represented by an array of characters called genes, which is randomly initialized upon setup. The agent can receive messages to perform various actions such as mutating its genes, calculating its fitness, exchanging chromosomes, and updating its genes based on received chromosomes. The agent communicates with other agents using the ACLMessage class. The CyclicBehaviour inside the setup() method handles incoming messages and triggers the appropriate actions based on the message content. The agent registers itself with the DFService to provide its services. The mutation() method randomly mutates one of the genes with a given probability. The calculateFitness() method determines the fitness of the individual by comparing its genes to a target solution. The sendChromosome() method sends the individual's chromosome to the message sender, and the changeChromosome() method updates the agent's genes based on the received chromosome. The takeDown() method is responsible for deregistering the agent from the DFService upon termination. Overall, this code represents the behavior and functionality of an individual agent in a GA system.
+```
+import jade.core.Agent;
+import jade.core.behaviours.CyclicBehaviour;
+import jade.domain.DFService;
+import jade.domain.FIPAAgentManagement.DFAgentDescription;
+import jade.domain.FIPAAgentManagement.ServiceDescription;
+import jade.domain.FIPAException;
+import jade.lang.acl.ACLMessage;
+
+import java.util.Random;
+
+public class IndividualAgent extends Agent {
+    private char genes[]=new char[GAUtils.Max_Fitness];
+    private int fitness;
+    Random rnd=new Random();
+    @Override
+    protected void setup() {
+        DFAgentDescription dfAgentDescription=new DFAgentDescription();
+        dfAgentDescription.setName(getAID());
+        ServiceDescription serviceDescription=new ServiceDescription();
+        serviceDescription.setType("ga");
+        serviceDescription.setName("ga_ma");
+        dfAgentDescription.addServices(serviceDescription);
+        try {
+            DFService.register(this,dfAgentDescription);
+        } catch (FIPAException e) {
+            e.printStackTrace();
+        }
+
+        for (int i=0;i<genes.length;i++){
+            genes[i]= GAUtils.CHARATERS.charAt(rnd.nextInt(GAUtils.CHARATERS.length()));
+        }
+        //mutation
+       addBehaviour(new CyclicBehaviour() {
+           @Override
+           public void action() {
+               ACLMessage receivedMSG = receive();
+               if(receivedMSG!=null){
+                       switch (receivedMSG.getContent()){
+                           case "mutation":mutation();break;
+                           case "fitness" : calculateFintess(receivedMSG);break;
+                           case "chromosome":sendChromosome(receivedMSG);break;
+                           default: changeChromosome(receivedMSG);break;
+                       }
+
+
+               }else {
+                   block();
+               }
+           }
+       });
+    }
+
+private void mutation(){
+    int index=rnd.nextInt(GAUtils.Max_Fitness);
+    if (rnd.nextDouble()<GAUtils.MUTATION_PROB){
+        genes[index]=GAUtils.CHARATERS.charAt(rnd.nextInt(GAUtils.CHARATERS.length()));
+    }
+}
+
+private void calculateFintess(ACLMessage receivedMSG){
+    fitness=0;
+    for (int i=0;i<GAUtils.Max_Fitness;i++) {
+        if(genes[i]==GAUtils.SOLUTION.charAt(i))
+            fitness+=1;
+    }
+    ACLMessage replyMsg=receivedMSG.createReply();
+    replyMsg.setContent(String.valueOf(fitness));
+    send(replyMsg);
+}
+private void sendChromosome(ACLMessage receivedMSG){
+    ACLMessage replyMsg=receivedMSG.createReply();
+    replyMsg.setContent(new String(genes));
+    send(replyMsg);
+}
+private void  changeChromosome(ACLMessage receivedMSG){
+    genes=receivedMSG.getContent().toCharArray();
+    mutation();
+    calculateFintess(receivedMSG);
+
+}
+
+    @Override
+    protected void takeDown() {
+        try {
+            DFService.deregister(this);
+        } catch (FIPAException e) {
+            e.printStackTrace();
+        }
+    }
+}
+
+```
+### MainAgentGA Class 
+The MainAgentGA class represents an agent in a Genetic Algorithm (GA) system. The agent's main functionality is to participate in the GA process, including fitness calculation, selection, and crossover.
+
+Upon setup, the agent searches for other agents with the service type "ga" using the DFService class. It initializes a list of AgentFitness objects to store the fitness information of other agents.
+
+The agent then calculates the fitness of its own population by sending a request message to all other agents and waiting for their responses. The fitness values received are stored in the agentsFitness list.
+
+Next, the agent executes a sequential behavior that consists of two sub-behaviors. The first sub-behavior receives fitness messages from other agents, updates the fitness values in the agentsFitness list, and checks if it has received fitness values from all agents.
+
+Once all fitness values are received, the agent proceeds to the second sub-behavior, which performs selection, crossover, and fitness evaluation on the selected individuals. The crossover operation involves exchanging genetic information between two parent individuals to produce offspring individuals.
+
+After each iteration of crossover, the agent sends a request message to the top-ranked individual (based on fitness) to obtain its chromosome and fitness value. The agent prints the iteration number, received chromosome, and the fitness value of the top-ranked individual.
+
+The second sub-behavior continues until a termination condition is met, either reaching the maximum number of iterations or finding a solution with maximum fitness.
+
+Throughout the process, the agent communicates with other agents using ACL messages, sending and receiving chromosome information and fitness values.
+
+Finally, the agent provides helper methods to calculate fitness, set agent fitness values, send messages to specific agents, and display the population's fitness values.
+
+```
+import jade.core.AID;
+import jade.core.Agent;
+import jade.core.behaviours.Behaviour;
+import jade.core.behaviours.SequentialBehaviour;
+import jade.domain.DFService;
+import jade.domain.FIPAAgentManagement.DFAgentDescription;
+import jade.domain.FIPAAgentManagement.ServiceDescription;
+import jade.domain.FIPAException;
+import jade.lang.acl.ACLMessage;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Random;
+
+public class MainAgentGA extends Agent {
+    List<AgentFitness> agentsFitness=new ArrayList<>();
+    Random rnd=new Random();
+    @Override
+    protected void setup() {
+        DFAgentDescription dfAgentDescription=new DFAgentDescription();
+        ServiceDescription serviceDescription=new ServiceDescription();
+        serviceDescription.setType("ga");
+        dfAgentDescription.addServices(serviceDescription);
+        try {
+            DFAgentDescription[] agentsDescriptions = DFService.search(this, dfAgentDescription);
+            System.out.println(agentsDescriptions.length);
+            for (DFAgentDescription dfAD:agentsDescriptions) {
+                agentsFitness.add(new AgentFitness(dfAD.getName(),0));
+            }
+        } catch (FIPAException e) {
+            e.printStackTrace();
+        }
+        calculateFintness();
+        SequentialBehaviour sequentialBehaviour=new SequentialBehaviour();
+        sequentialBehaviour.addSubBehaviour(new Behaviour()
+        {
+            int cpt=0;
+            @Override
+            public void action() {
+                ACLMessage receivedMSG = receive();
+                if (receivedMSG!=null){
+                    cpt++;
+                    System.out.println(cpt);
+                    int fintess=Integer.parseInt(receivedMSG.getContent());
+                    AID sender=receivedMSG.getSender();
+                    //System.out.println(sender.getName()+" "+fintess);
+                    setAgentFintess(sender,fintess);
+                    if(cpt==GAUtils.POPULATION_SIZE){
+                        Collections.sort(agentsFitness,Collections.reverseOrder());
+                        showPopulation();
+                    }
+                }else {
+                    block();
+                }
+            }
+
+            @Override
+            public boolean done() {
+                return  cpt==GAUtils.POPULATION_SIZE;
+            }
+
+        });
+        sequentialBehaviour.addSubBehaviour(new Behaviour() {
+            int it=0;
+            AgentFitness agent1;
+            AgentFitness agent2;
+            @Override
+            public void action() {
+                selection();
+                crossover();
+                Collections.sort(agentsFitness,Collections.reverseOrder());
+                sendMessage(agentsFitness.get(0).getAid(),"chromosome",ACLMessage.REQUEST);
+                ACLMessage aclMessage=blockingReceive();
+                System.out.println(it+" "+aclMessage.getContent()+" : "+agentsFitness.get(0).getFitness());
+                it++;
+            }
+            private void selection(){
+                //System.out.println("***** Selection ****");
+                agent1=agentsFitness.get(0);
+                agent2=agentsFitness.get(1);
+                sendMessage(agent1.getAid(),"chromosome",ACLMessage.REQUEST);
+                sendMessage(agent2.getAid(),"chromosome",ACLMessage.REQUEST);
+            }
+            private void crossover(){
+                ACLMessage aclMessage1=blockingReceive();
+                ACLMessage aclMessage2=blockingReceive();
+
+                int pointCroisment=rnd.nextInt(GAUtils.Max_Fitness-2);
+                //System.out.println(pointCroisment);
+                pointCroisment++;
+                char []chromosomParent1= aclMessage1.getContent().toCharArray();
+                char []chromosomParent2=aclMessage2.getContent().toCharArray();
+                char []chromosomOffstring1=new char[GAUtils.Max_Fitness];
+                char [] chromosomOffstring2=new char[GAUtils.Max_Fitness];
+                for (int i=0;i<chromosomParent1.length;i++) {
+                    chromosomOffstring1[i]=chromosomParent1[i];
+                    chromosomOffstring2[i]=chromosomParent2[i];
+                }
+                for (int i=0;i<pointCroisment;i++) {
+                    chromosomOffstring1[i]=chromosomParent2[i];
+                    chromosomOffstring2[i]=chromosomParent1[i];
+                }
+
+                int fitness=0;
+                for (int i=0;i<GAUtils.Max_Fitness;i++) {
+                    if(chromosomOffstring1[i]==GAUtils.SOLUTION.charAt(i))
+                        fitness+=1;
+                }
+                agentsFitness.get(GAUtils.POPULATION_SIZE-2).setFitness(fitness);
+
+                fitness=0;
+                for (int i=0;i<GAUtils.Max_Fitness;i++) {
+                    if(chromosomOffstring2[i]==GAUtils.SOLUTION.charAt(i))
+                        fitness+=1;
+                }
+                agentsFitness.get(GAUtils.POPULATION_SIZE-1).setFitness(fitness);
+
+
+
+
+                sendMessage(agentsFitness.get(GAUtils.POPULATION_SIZE-2).getAid(),new String(chromosomOffstring1),ACLMessage.REQUEST);
+
+                sendMessage(agentsFitness.get(GAUtils.POPULATION_SIZE-1).getAid(),new String(chromosomOffstring2),ACLMessage.REQUEST);
+
+                ACLMessage receivedMsg1=blockingReceive();
+                ACLMessage receivedMsg2=blockingReceive();
+                setAgentFintess(receivedMsg1.getSender(),Integer.parseInt(receivedMsg1.getContent()));
+                setAgentFintess(receivedMsg2.getSender(),Integer.parseInt(receivedMsg2.getContent()));
+
+            }
+            @Override
+            public boolean done() {
+                return it==GAUtils.MAX_IT || agentsFitness.get(0).getFitness()==GAUtils.Max_Fitness;
+            }
+        });
+        addBehaviour(sequentialBehaviour);
+
+    }
+private void calculateFintness(){
+    ACLMessage message=new ACLMessage(ACLMessage.REQUEST);
+
+    for (AgentFitness agf:agentsFitness) {
+        message.addReceiver(agf.getAid());
+    }
+    message.setContent("fitness");
+    send(message);
+
+}
+private void setAgentFintess(AID aid,int fitness){
+        for (int i=0;i<GAUtils.POPULATION_SIZE;i++){
+            if(agentsFitness.get(i).getAid().equals(aid)){
+                agentsFitness.get(i).setFitness(fitness);
+                //System.out.println(fitness+"=:="+agentsFitness.get(i).getFitness());
+                break;
+            }
+        }
+}
+private void sendMessage(AID aid,String content,int performative){
+        ACLMessage message=new ACLMessage(performative);
+        message.setContent(content);
+        message.addReceiver(aid);
+        send(message);
+
+}
+private void showPopulation(){
+    for (AgentFitness agentFitness:agentsFitness) {
+        System.out.println(agentFitness.getAid().getName()+" "+agentFitness.getFitness());
+    }
+}
+}
+
+```
+
+### MainContainer Class
+The MainContainer class serves as the entry point for creating and starting the main container in a JADE (Java Agent Development Framework) platform.
+
+In the main() method, the code initializes a JADE runtime environment by creating an instance of the Runtime class using Runtime.instance(). It also creates a ProfileImpl instance to specify the profile settings for the agent platform. In this case, the code sets the GUI parameter to "true", enabling the graphical user interface (GUI) for the JADE platform.
+
+Next, the code creates the main container using the createMainContainer() method of the Runtime instance, passing the ProfileImpl instance as an argument. This main container is the central component of the JADE platform, responsible for managing the lifecycle of agents.
+
+Finally, the start() method is called on the AgentContainer instance to start the main container and initialize the agent platform.
+
+By executing this code, the JADE platform is initialized with the specified profile settings and the main container is started, enabling the development and execution of agents within the platform.
+```
+import jade.core.Profile;
+import jade.core.ProfileImpl;
+import jade.core.Runtime;
+import jade.wrapper.AgentContainer;
+import jade.wrapper.ControllerException;
+
+public class MainContainer {
+    public static void main(String[] args) throws ControllerException {
+        Runtime runtime=Runtime.instance();
+        ProfileImpl profile=new ProfileImpl();
+        profile.setParameter(Profile.GUI,"true");
+        AgentContainer mainContainer = runtime.createMainContainer(profile);
+        mainContainer.start();
+    }
+}
+```
+### SimpleContainer class 
+The SimpleContainer class serves as the entry point for creating and starting the agent container in a JADE (Java Agent Development Framework) platform.
+
+In the main() method, the code initializes a JADE runtime environment by creating an instance of the Runtime class using Runtime.instance(). It also creates a ProfileImpl instance to specify the profile settings for the agent platform. In this case, the code sets the MAIN_HOST parameter to "localhost", indicating that the main container will be created on the local machine.
+
+Next, the code creates the agent container using the createAgentContainer() method of the Runtime instance, passing the ProfileImpl instance as an argument. The agent container is responsible for managing the creation, execution, and communication of agents.
+
+The code then creates and starts multiple instances of IndividualAgent by iterating over a loop. Each IndividualAgent is assigned a unique name based on the loop index and is created within the agent container.
+
+Finally, the code creates and starts an instance of MainAgentGA, which represents the main agent responsible for coordinating the Genetic Algorithm (GA) process. This agent is also created within the agent container.
+
+By executing this code, the agent container is created, and the specified agents (IndividualAgent and MainAgentGA) are instantiated and started within the container, enabling the execution of the agent-based system in the JADE platform.
+```
+import jade.core.Profile;
+import jade.core.ProfileImpl;
+import jade.core.Runtime;
+import jade.wrapper.AgentContainer;
+import jade.wrapper.AgentController;
+import jade.wrapper.StaleProxyException;
+
+public class SimpleContainer {
+    public static void main(String[] args) throws StaleProxyException {
+        Runtime runtime=Runtime.instance();
+        ProfileImpl profile=new ProfileImpl();
+        profile.setParameter(Profile.MAIN_HOST,"localhost");
+        AgentContainer agentContainer = runtime.createAgentContainer(profile);
+        AgentController mainAgent=null;
+        for (int i=0;i< GAUtils.POPULATION_SIZE;i++){
+            mainAgent = agentContainer.createNewAgent(String.valueOf(i), IndividualAgent.class.getName(), new Object[]{});
+            mainAgent.start();
+        }
+         mainAgent = agentContainer.createNewAgent("mainAgent", MainAgentGA.class.getName(), new Object[]{});
+        mainAgent.start();
+
+
+    }
+}
+
+```
+### Execution 
+<img src="Images/exec1.png">
+
+
 

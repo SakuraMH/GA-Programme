@@ -11,6 +11,7 @@ public class Individual implements Comparable{
     public Individual() {
         Random rnd=new Random();
         for (int i=0;i<genes.length;i++){
+
             Random rand = new Random();
             char c = (char)(rand.nextInt(26) + 97);
             //System.out.println(c);
